@@ -232,4 +232,56 @@ test.describe('Ended sessions', () => {
     await expect(page).toHaveURL(/track=/);
     for (const l of ['Venue', 'Level', 'Format', 'Topic']) await expect(page.getByLabel(l)).toBeVisible();
   });
+  test('several tracks can be selected at once, in the URL, and deselected', async ({ page, request }) => {
+    const { tracks } = await (await request.get(`${API}/bootstrap`)).json();
+    const [a, b] = tracks;
+    const [day] = await conferenceDays();
+    const label = (t) => t.shortName ?? t.name;
+    const countFor = async (slugs) => {
+      const q = `?day=${day}&trackSlug=${slugs.join(',')}`;
+      return (await (await request.get(`${API}/sessions${q}`)).json()).length;
+    };
+    const count = page.getByTestId('result-count');
+    const pill = (t) => page.getByRole('button', { name: label(t), exact: true });
+    const openRail = async () => {
+      const filters = page.getByRole('button', { name: /^Filters/ });
+      if (await filters.isVisible()) await filters.click();
+    };
+
+    await visit(page, `/schedule?day=${day}`);
+    await waitForResults(page);
+    await openRail();
+    await pill(a).click();
+    await pill(b).click();
+    await expect(page).toHaveURL(new RegExp(`track=${a.slug}(,|%2C)${b.slug}`));
+    await expect(pill(a)).toHaveAttribute('aria-pressed', 'true');
+    await expect(pill(b)).toHaveAttribute('aria-pressed', 'true');
+    await expect(count).toContainText(`${await countFor([a.slug, b.slug])} sessions`);
+    await expect(page.getByTestId('view-grid')).toBeDisabled();
+    await expect(page.locator('article').first()).toBeVisible();
+    await shotForPR(page, 'two tracks selected');
+
+    await page.reload();
+    await waitForResults(page);
+    await openRail();
+    await expect(pill(a)).toHaveAttribute('aria-pressed', 'true');
+    await expect(pill(b)).toHaveAttribute('aria-pressed', 'true');
+
+    await pill(a).click();
+    await expect(pill(a)).toHaveAttribute('aria-pressed', 'false');
+    await expect(count).toContainText(`${await countFor([b.slug])} sessions`);
+    await expect(page).toHaveURL(new RegExp(`track=${b.slug}(&|$)`));
+
+    await visit(page, `/schedule?day=${day}&track=${a.slug}`);
+    await waitForResults(page);
+    await openRail();
+    await expect(pill(a)).toHaveAttribute('aria-pressed', 'true');
+    await expect(count).toContainText(`${await countFor([a.slug])} sessions`);
+
+    await pill(b).click();
+    await page.getByRole('button', { name: 'All', exact: true }).first().click();
+    await expect(page).not.toHaveURL(/track=/);
+    await expect(pill(a)).toHaveAttribute('aria-pressed', 'false');
+    await expect(pill(b)).toHaveAttribute('aria-pressed', 'false');
+  });
 });
