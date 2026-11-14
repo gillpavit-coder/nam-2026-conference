@@ -123,6 +123,17 @@ describe('Every endpoint answers', () => {
     }
   });
 
+  test('trackSlug takes a comma list and returns the union; one slug is unchanged', async () => {
+    const [a, b] = (await api.json('/bootstrap')).tracks.map((t) => t.slug);
+    const ofA = await api.json(`/sessions?trackSlug=${a}`);
+    const ofB = await api.json(`/sessions?trackSlug=${b}`);
+    const both = await api.json(`/sessions?trackSlug=${a},${b}`);
+    assert.ok(ofA.length > 0 && ofB.length > 0);
+    assert.deepEqual(both.map((s) => s.id).sort(), [...ofA, ...ofB].map((s) => s.id).sort());
+    assert.deepEqual((await api.json(`/sessions?trackSlug=${b},${a}`)).length, both.length);
+    assert.deepEqual((await api.json(`/sessions?trackSlug=${a},nope`)).map((s) => s.id), ofA.map((s) => s.id));
+  });
+
   test('the health check reports ok and the session count', async () => {
     const res = await api.get('/health');
     assert.equal(res.status, 200, `GET /health → ${res.status}`);
